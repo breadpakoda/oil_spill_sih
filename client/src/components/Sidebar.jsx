@@ -40,8 +40,7 @@ const Sidebar = () => {
         </div>
       </div>
 
-      {/* Demo Mode Badge */}
-      <div style={{ padding: '0.75rem 1.25rem 0.5rem 1.25rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+      <div style={{ padding: '0.5rem 0.85rem 0.4rem', display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
         <span className="badge badge-demo badge-pulse">Demo Mode</span>
         <span className="badge badge-simulated">Simulated Data</span>
       </div>
@@ -57,8 +56,8 @@ const Sidebar = () => {
             onChange={(e) => selectIncident(e.target.value)}
             style={{
               width: '100%',
-              background: 'rgba(15, 28, 52, 0.9)',
-              border: '1px solid var(--border-cyan)',
+              background: 'var(--bg-muted)',
+              border: '1px solid var(--border)',
               color: 'var(--text-primary)',
               borderRadius: 'var(--radius-sm)',
               padding: '0.5rem 1.8rem 0.5rem 0.75rem',
@@ -78,8 +77,8 @@ const Sidebar = () => {
             ))}
           </select>
           <ChevronDown
-            size={14}
-            style={{ position: 'absolute', right: '0.65rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--primary)' }}
+            size={13}
+            style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}
           />
         </div>
       </div>
@@ -101,26 +100,26 @@ const Sidebar = () => {
         })}
       </nav>
 
-      {/* Active Incident Summary in Footer */}
+      {/* Footer */}
       <div className="sidebar-footer">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Status:</span>
-          <span className="badge badge-danger">{activeIncident?.status || 'Active'}</span>
+          <span style={{ color: 'var(--text-muted)' }}>Status</span>
+          <span className="badge badge-danger" style={{ fontSize: '0.62rem' }}>{activeIncident?.status?.split(' ')[0] || 'Active'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-muted)' }}>Confidence:</span>
-          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--primary)', fontWeight: 700 }}>
+          <span style={{ color: 'var(--text-muted)' }}>Confidence</span>
+          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--primary)', fontWeight: 700, fontSize: '0.8rem' }}>
             {activeIncident?.confidence || 94.2}%
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-muted)' }}>Candidates:</span>
-          <span style={{ fontFamily: 'var(--font-mono)', color: '#f59e0b', fontWeight: 700 }}>
-            {activeIncident?.candidateCount || 4} Vessels
+          <span style={{ color: 'var(--text-muted)' }}>Candidates</span>
+          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--warning)', fontWeight: 700, fontSize: '0.8rem' }}>
+            {activeIncident?.candidateCount || 4} vessels
           </span>
         </div>
-        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.4rem', marginTop: '0.2rem', textAlign: 'center', fontSize: '0.65rem', color: 'var(--text-dim)' }}>
-          SIH Prototype • Smart India Hackathon
+        <div style={{ paddingTop: '0.35rem', marginTop: '0.1rem', textAlign: 'center', fontSize: '0.63rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
+          SIH Prototype · Smart India Hackathon
         </div>
       </div>
     </aside>
