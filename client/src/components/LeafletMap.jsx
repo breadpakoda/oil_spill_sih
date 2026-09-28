@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   MapContainer,
   TileLayer,
@@ -11,17 +12,136 @@ import {
   useMap
 } from 'react-leaflet';
 import L from 'leaflet';
-import { Layers, Eye, EyeOff, Navigation, Wind, Compass, Ship, AlertCircle } from 'lucide-react';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import '@maplibre/maplibre-gl-leaflet';
+import {
+  Layers,
+  Crosshair,
+  Wind,
+  Compass,
+  Ship,
+  Radio,
+  ArrowRight,
+  Eye,
+  Check,
+  RotateCcw,
+  Sparkles,
+  Map as MapIcon
+} from 'lucide-react';
 import { useIncident } from '../context/IncidentContext';
 
-// Helper to recenter map when active incident changes
-function MapRecenter({ center }) {
+// Working Map Providers Configuration featuring OpenFreeMap
+const BASEMAPS = {
+  openfreemapLiberty: {
+    id: 'openfreemapLiberty',
+    name: 'OpenFreeMap Liberty (Vector)',
+    isVector: true,
+    url: 'https://tiles.openfreemap.org/styles/liberty',
+    attribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  },
+  openfreemapPositron: {
+    id: 'openfreemapPositron',
+    name: 'OpenFreeMap Positron (Vector)',
+    isVector: true,
+    url: 'https://tiles.openfreemap.org/styles/positron',
+    attribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  },
+  openfreemapBright: {
+    id: 'openfreemapBright',
+    name: 'OpenFreeMap Bright (Vector)',
+    isVector: true,
+    url: 'https://tiles.openfreemap.org/styles/bright',
+    attribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  },
+  osm: {
+    id: 'osm',
+    name: 'OpenStreetMap Standard',
+    isVector: false,
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  },
+  cartoDark: {
+    id: 'cartoDark',
+    name: 'Dark Ocean Tactical',
+    isVector: false,
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+  },
+  esriOcean: {
+    id: 'esriOcean',
+    name: 'ESRI Ocean Bathymetry',
+    isVector: false,
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Sources: GEBCO, NOAA, CHS, OSU, UNH, CSUMB, National Geographic',
+    maxZoom: 13
+  },
+  esriSatellite: {
+    id: 'esriSatellite',
+    name: 'Satellite Imagery',
+    isVector: false,
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid',
+    maxZoom: 18
+  }
+};
+
+// OpenFreeMap MapLibre Vector Tile Layer for Leaflet
+function OpenFreeMapLayer({ styleUrl }) {
   const map = useMap();
+
+  useEffect(() => {
+    if (!map || !L.maplibreGL) return;
+
+    let glLayer = null;
+    try {
+      glLayer = L.maplibreGL({
+        style: styleUrl,
+        attribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      });
+      glLayer.addTo(map);
+    } catch (err) {
+      console.warn('OpenFreeMap layer initialization warning:', err);
+    }
+
+    return () => {
+      if (glLayer && map) {
+        try {
+          map.removeLayer(glLayer);
+        } catch (e) {}
+      }
+    };
+  }, [map, styleUrl]);
+
+  return null;
+}
+
+// Helper to recenter map and invalidate size on mount
+function MapController({ center, triggerRecenter }) {
+  const map = useMap();
+
+  useEffect(() => {
+    // Invalidate map size to ensure 100% tile rendering on layout mount
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [map]);
+
   useEffect(() => {
     if (center && center[0] && center[1]) {
-      map.flyTo(center, 10, { duration: 1.2 });
+      map.flyTo(center, 10, { duration: 1.0 });
     }
   }, [center, map]);
+
+  useEffect(() => {
+    if (triggerRecenter && center && center[0] && center[1]) {
+      map.flyTo(center, 10, { duration: 0.8 });
+    }
+  }, [triggerRecenter, center, map]);
+
   return null;
 }
 
@@ -30,7 +150,6 @@ function getInterpolatedVesselPosition(track, progress) {
   if (!track || track.length === 0) return null;
   if (track.length === 1) return track[0];
 
-  // Map 0-100 progress to track indices
   const totalSegments = track.length - 1;
   const progressRatio = Math.max(0, Math.min(1, progress / 100));
   const exactIndex = progressRatio * totalSegments;
@@ -50,9 +169,9 @@ function getInterpolatedVesselPosition(track, progress) {
 }
 
 // Custom DivIcons
-const createVesselIcon = (vessel, isPrimary, heading) => {
+const createVesselIcon = (vessel, isPrimary, heading, isOverview = false) => {
   const color = vessel.color || (isPrimary ? '#ef4444' : '#3b82f6');
-  const size = isPrimary ? 34 : 26;
+  const size = isOverview ? 24 : (isPrimary ? 32 : 26);
 
   return L.divIcon({
     className: 'custom-vessel-marker',
@@ -64,8 +183,9 @@ const createVesselIcon = (vessel, isPrimary, heading) => {
         align-items: center;
         justify-content: center;
         transform: rotate(${heading || 0}deg);
-        filter: drop-shadow(0 0 6px ${color});
+        filter: drop-shadow(0 0 ${isOverview ? '4px' : '6px'} ${color});
         cursor: pointer;
+        transition: transform 0.2s ease;
       ">
         <svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="${color}" stroke="#060b18" stroke-width="1.5">
           <polygon points="12,2 20,20 12,16 4,20" />
@@ -82,25 +202,29 @@ const createSourceIcon = () => {
     className: 'custom-source-marker',
     html: `
       <div style="
-        width: 24px;
-        height: 24px;
+        width: 22px;
+        height: 22px;
         border-radius: 50%;
         background: rgba(245, 158, 11, 0.4);
         border: 2px solid #f59e0b;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 0 14px #f59e0b;
+        box-shadow: 0 0 12px #f59e0b;
       ">
-        <div style="width: 8px; height: 8px; border-radius: 50%; background: #ffffff;"></div>
+        <div style="width: 6px; height: 6px; border-radius: 50%; background: #ffffff;"></div>
       </div>
     `,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
+    iconSize: [22, 22],
+    iconAnchor: [11, 11]
   });
 };
 
-const LeafletMap = ({ height = '580px' }) => {
+const LeafletMap = ({
+  height = '100%',
+  mode = 'overview', // 'overview' | 'tactical' | 'forecast'
+  customCenter = null
+}) => {
   const {
     activeIncident,
     environmentalData,
@@ -111,26 +235,65 @@ const LeafletMap = ({ height = '580px' }) => {
     timelineProgress
   } = useIncident();
 
-  // Layer Visibility State
-  const [layers, setLayers] = useState({
-    slick: true,
-    slickBoundary: true,
-    backwardTrajectory: true,
-    probableSource: true,
-    vesselTracks: true,
-    vesselPositions: true,
-    forecastPath: true,
-    uncertaintyCorridor: true,
-    environmentalVectors: true
+  const navigate = useNavigate();
+  const [layersMenuOpen, setLayersMenuOpen] = useState(false);
+  const [recenterCounter, setRecenterCounter] = useState(0);
+  const [activeBasemap, setActiveBasemap] = useState('openfreemapLiberty');
+
+  const isOverview = mode === 'overview';
+
+  // Layer Visibility State configured by mode
+  const [layers, setLayers] = useState(() => {
+    if (mode === 'overview') {
+      return {
+        slick: true,
+        vessels: true,
+        sourceRegion: false,
+        vesselTracks: false,
+        backtrack: false,
+        forecast: false,
+        wind: false,
+        current: false,
+        waves: false,
+        satellite: false
+      };
+    } else if (mode === 'forecast') {
+      return {
+        slick: true,
+        vessels: true,
+        sourceRegion: false,
+        vesselTracks: false,
+        backtrack: false,
+        forecast: true,
+        wind: true,
+        current: true,
+        waves: false,
+        satellite: false
+      };
+    } else {
+      // tactical mode
+      return {
+        slick: true,
+        vessels: true,
+        sourceRegion: true,
+        vesselTracks: true,
+        backtrack: true,
+        forecast: true,
+        wind: true,
+        current: true,
+        waves: false,
+        satellite: false
+      };
+    }
   });
 
   const toggleLayer = (layerKey) => {
     setLayers(prev => ({ ...prev, [layerKey]: !prev[layerKey] }));
   };
 
-  const centerCoords = activeIncident?.coordinates
+  const centerCoords = customCenter || (activeIncident?.coordinates
     ? [activeIncident.coordinates.lat, activeIncident.coordinates.lng]
-    : [18.824, 72.842];
+    : [18.824, 72.842]);
 
   // Slick polygon coordinates
   const slickCoords = useMemo(() => {
@@ -146,25 +309,66 @@ const LeafletMap = ({ height = '580px' }) => {
     ];
   }, [activeIncident]);
 
+  // Synthetic SAR swath polygon for remote sensing layer
+  const satelliteSwathCoords = useMemo(() => {
+    if (!centerCoords) return [];
+    const [lat, lng] = centerCoords;
+    return [
+      [lat + 0.35, lng - 0.45],
+      [lat + 0.42, lng + 0.30],
+      [lat - 0.35, lng + 0.45],
+      [lat - 0.42, lng - 0.30]
+    ];
+  }, [centerCoords]);
+
+  const currentBasemap = BASEMAPS[activeBasemap] || BASEMAPS.cartoDark;
+
   return (
-    <div style={{ position: 'relative', width: '100%', height, borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-subtle)', background: '#0a1424' }}>
+    <div className={`operational-map-container ${isOverview ? 'map-overview-mode' : 'map-standard-mode'}`} style={{ width: '100%', height, position: 'relative' }}>
       <MapContainer
         center={centerCoords}
         zoom={10}
+        zoomControl={false}
         scrollWheelZoom={true}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: '100%', height: '100%', background: '#0a1424' }}
       >
-        <MapRecenter center={centerCoords} />
+        <MapController center={centerCoords} triggerRecenter={recenterCounter} />
 
-        {/* Tactical Dark Ocean Base Map */}
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          maxZoom={18}
-        />
+        {/* Active Base Map Layer (OpenFreeMap Vector or TileLayer Raster) */}
+        {currentBasemap.isVector ? (
+          <OpenFreeMapLayer key={currentBasemap.id} styleUrl={currentBasemap.url} />
+        ) : (
+          <TileLayer
+            key={currentBasemap.id}
+            url={currentBasemap.url}
+            attribution={currentBasemap.attribution}
+            subdomains={currentBasemap.subdomains || 'abc'}
+            maxZoom={currentBasemap.maxZoom || 18}
+          />
+        )}
 
-        {/* 1. Probable Source Region (Lagrangian Particle Hindcast) */}
-        {layers.probableSource && activeIncident?.probableSourceRegion && (
+        {/* ── 1. SAR Satellite Swath Layer (Remote Sensing) ── */}
+        {layers.satellite && (
+          <Polygon
+            positions={satelliteSwathCoords}
+            pathOptions={{
+              color: '#38bdf8',
+              weight: 1.5,
+              dashArray: '5, 5',
+              fillColor: '#38bdf8',
+              fillOpacity: 0.08
+            }}
+          >
+            <Tooltip direction="top">
+              <span className="mono" style={{ fontSize: '0.72rem', color: '#38bdf8' }}>
+                SAR Swath: {activeIncident?.sarSatellite || 'Sentinel-1B / C-Band'} (Orbit 4812)
+              </span>
+            </Tooltip>
+          </Polygon>
+        )}
+
+        {/* ── 2. Probable Source Region (Lagrangian Hindcast) ── */}
+        {layers.sourceRegion && activeIncident?.probableSourceRegion && (
           <>
             <Circle
               center={activeIncident.probableSourceRegion.center}
@@ -177,12 +381,11 @@ const LeafletMap = ({ height = '580px' }) => {
                 dashArray: '6, 6'
               }}
             >
-              <Tooltip direction="top" permanent={false} opacity={0.9}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
+              <Tooltip direction="top" opacity={0.95}>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.74rem' }}>
                   <strong style={{ color: '#f59e0b' }}>PROBABLE SOURCE REGION</strong>
-                  <div>Release Window: {activeIncident.probableSourceRegion.displayWindow}</div>
-                  <div>Source Confidence: {activeIncident.probableSourceRegion.confidence}%</div>
-                  <div>Radius: {(activeIncident.probableSourceRegion.radiusMeters / 1000).toFixed(1)} km</div>
+                  <div>Window: {activeIncident.probableSourceRegion.displayWindow}</div>
+                  <div>Confidence: {activeIncident.probableSourceRegion.confidence}%</div>
                 </div>
               </Tooltip>
             </Circle>
@@ -191,10 +394,10 @@ const LeafletMap = ({ height = '580px' }) => {
               position={activeIncident.probableSourceRegion.center}
               icon={createSourceIcon()}
             >
-              <Popup>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-                  <h4 style={{ color: '#f59e0b', marginBottom: '4px' }}>Reconstructed Discharge Point</h4>
-                  <div>Centroid: {activeIncident.probableSourceRegion.center.join(', ')}</div>
+              <Popup className="operational-popup">
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }}>
+                  <div style={{ color: '#f59e0b', fontWeight: 700, marginBottom: '4px' }}>Reconstructed Discharge Point</div>
+                  <div>Centroid: {activeIncident.probableSourceRegion.center.join('°, ')}°</div>
                   <div>Method: {activeIncident.probableSourceRegion.method}</div>
                 </div>
               </Popup>
@@ -202,8 +405,8 @@ const LeafletMap = ({ height = '580px' }) => {
           </>
         )}
 
-        {/* 2. Backward Trajectory Line (Hindcast drift vector) */}
-        {layers.backwardTrajectory && activeIncident?.backwardTrajectory && (
+        {/* ── 3. Backtrack Trajectory Line (Hindcast drift) ── */}
+        {layers.backtrack && activeIncident?.backwardTrajectory && (
           <Polyline
             positions={activeIncident.backwardTrajectory}
             pathOptions={{
@@ -214,40 +417,79 @@ const LeafletMap = ({ height = '580px' }) => {
             }}
           >
             <Tooltip direction="center">
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#f59e0b' }}>
+              <span className="mono" style={{ fontSize: '0.72rem', color: '#f59e0b' }}>
                 Backward Drift Trajectory (3.5h Hindcast)
               </span>
             </Tooltip>
           </Polyline>
         )}
 
-        {/* 3. Detected Oil Slick Polygon */}
+        {/* ── 4. Detected Oil Slick Polygon & Minimal Popup ── */}
         {layers.slick && (
           <Polygon
             positions={slickCoords}
             pathOptions={{
-              color: layers.slickBoundary ? '#00f0ff' : 'transparent',
-              weight: layers.slickBoundary ? 2 : 0,
+              color: '#00f0ff',
+              weight: 2,
               fillColor: '#00f0ff',
-              fillOpacity: 0.35
+              fillOpacity: 0.32
             }}
           >
-            <Popup>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-                <strong style={{ color: '#00f0ff', fontSize: '0.9rem', display: 'block' }}>
-                  {activeIncident?.id} - Detected Oil Slick
-                </strong>
-                <div>Area: <strong>{activeIncident?.spillAreaKm2} km²</strong></div>
-                <div>Confidence: <strong>{activeIncident?.confidence}%</strong></div>
-                <div>Sensor: {activeIncident?.sarSatellite}</div>
-                <div>Detected: {activeIncident?.displayDate}</div>
-              </div>
+            <Popup className="operational-popup minimal-incident-popup">
+              {isOverview ? (
+                /* Google Maps Style Clean Minimal Popup on Landing Page */
+                <div className="popup-minimal-container">
+                  <div className="popup-minimal-header">
+                    <span className="popup-tag-danger">OIL SPILL DETECTED</span>
+                  </div>
+
+                  <div className="popup-minimal-body">
+                    <div className="popup-id-line mono">{activeIncident?.id}</div>
+                    <div className="popup-date-line">{activeIncident?.displayDate || '27 Sep 2026 • 14:32 UTC'}</div>
+
+                    <div className="popup-stats-row">
+                      <span className="popup-stat-item font-mono">
+                        <strong>{activeIncident?.spillAreaKm2}</strong> km²
+                      </span>
+                      <span className="popup-stat-item text-primary font-mono font-bold">
+                        {activeIncident?.confidence}% detection confidence
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => navigate('/incident')}
+                    className="popup-action-btn"
+                  >
+                    <span>OPEN INCIDENT</span>
+                    <ArrowRight size={13} />
+                  </button>
+                </div>
+              ) : (
+                /* Investigation/Tactical Popup */
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
+                  <strong style={{ color: '#00f0ff', fontSize: '0.9rem', display: 'block', marginBottom: '4px' }}>
+                    {activeIncident?.id} - Detected Slick
+                  </strong>
+                  <div>Area: <strong>{activeIncident?.spillAreaKm2} km²</strong></div>
+                  <div>Confidence: <strong>{activeIncident?.confidence}%</strong></div>
+                  <div>Sensor: {activeIncident?.sarSatellite}</div>
+                  <div>Detected: {activeIncident?.displayDate}</div>
+                  <button
+                    onClick={() => navigate('/incident')}
+                    className="btn btn-sm btn-primary"
+                    style={{ width: '100%', marginTop: '6px' }}
+                  >
+                    Investigate SAR Detection
+                  </button>
+                </div>
+              )}
             </Popup>
           </Polygon>
         )}
 
-        {/* 4. Forecast Uncertainty Corridor Envelope */}
-        {layers.uncertaintyCorridor && forecast?.uncertaintyCorridor && (
+        {/* ── 5. Forecast Uncertainty Corridor Envelope ── */}
+        {layers.forecast && forecast?.uncertaintyCorridor && (
           <Polygon
             positions={forecast.uncertaintyCorridor}
             pathOptions={{
@@ -259,25 +501,24 @@ const LeafletMap = ({ height = '580px' }) => {
             }}
           >
             <Tooltip direction="bottom">
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#a78bfa' }}>
-                24h Forecast Uncertainty Corridor ({forecast.overallConfidencePercent}% Conf.)
+              <span className="mono" style={{ fontSize: '0.72rem', color: '#a78bfa' }}>
+                24h Drift Envelope ({forecast.overallConfidencePercent}% Conf.)
               </span>
             </Tooltip>
           </Polygon>
         )}
 
-        {/* 5. Forecast Center Trajectory Line */}
-        {layers.forecastPath && forecast?.forecastPath && (
+        {/* ── 6. Forward Forecast Trajectory Line ── */}
+        {layers.forecast && forecast?.forecastPath && (
           <>
             <Polyline
               positions={forecast.forecastPath}
               pathOptions={{
                 color: '#ec4899',
-                weight: 3.5,
+                weight: 3,
                 opacity: 0.9
               }}
             />
-            {/* Forecast step points (+6h, +12h, +24h) */}
             {forecast.timeSteps?.map((ts, idx) => (
               <Circle
                 key={ts.step}
@@ -286,16 +527,14 @@ const LeafletMap = ({ height = '580px' }) => {
                 pathOptions={{
                   color: idx === 0 ? '#00f0ff' : '#ec4899',
                   fillColor: idx === 0 ? '#00f0ff' : '#ec4899',
-                  fillOpacity: 0.3,
+                  fillOpacity: 0.28,
                   weight: 1.5
                 }}
               >
-                <Tooltip direction="right" permanent={false}>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
+                <Tooltip direction="right">
+                  <div className="mono" style={{ fontSize: '0.72rem' }}>
                     <strong style={{ color: '#ec4899' }}>FORECAST {ts.step}</strong>
-                    <div>Time: {ts.displayTime || ts.step}</div>
-                    <div>Predicted Area: {ts.areaKm2} km²</div>
-                    {ts.remainingVolumeM3 && <div>Est. Volume: {ts.remainingVolumeM3} m³</div>}
+                    <div>Area: {ts.areaKm2} km²</div>
                   </div>
                 </Tooltip>
               </Circle>
@@ -303,7 +542,7 @@ const LeafletMap = ({ height = '580px' }) => {
           </>
         )}
 
-        {/* 6. Vessel Tracks (Polylines) */}
+        {/* ── 7. Vessel Tracks ── */}
         {layers.vesselTracks && vessels?.map((vessel) => {
           if (!vessel.track || vessel.track.length < 2) return null;
           const coords = vessel.track.map(t => [t.lat, t.lng]);
@@ -316,125 +555,261 @@ const LeafletMap = ({ height = '580px' }) => {
               positions={coords}
               pathOptions={{
                 color: vessel.color || (isPrimary ? '#ef4444' : '#3b82f6'),
-                weight: isSelected ? 4 : (isPrimary ? 3 : 2),
-                opacity: isSelected ? 1 : 0.65,
+                weight: isSelected ? 4 : (isPrimary ? 2.5 : 1.5),
+                opacity: isSelected ? 0.95 : 0.6,
                 dashArray: isPrimary ? null : '4, 4'
               }}
             >
               <Tooltip direction="top">
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
-                  {vessel.name} ({vessel.shipType}) • Track
+                <span className="mono" style={{ fontSize: '0.72rem' }}>
+                  {vessel.name} ({vessel.shipType})
                 </span>
               </Tooltip>
             </Polyline>
           );
         })}
 
-        {/* 7. Vessel Animated Positions (Interpolated by Timeline) */}
-        {layers.vesselPositions && vessels?.map((vessel) => {
+        {/* ── 8. Relevant Vessels (Markers & Minimal Popups) ── */}
+        {layers.vessels && vessels?.map((vessel) => {
           const isPrimary = vessel.candidateRank === 1;
           const isSelected = selectedVessel?.id === vessel.id;
-          const pos = getInterpolatedVesselPosition(vessel.track, timelineProgress);
+          const pos = (mode === 'tactical')
+            ? getInterpolatedVesselPosition(vessel.track, timelineProgress)
+            : (vessel.track?.[vessel.track.length - 1] || { lat: vessel.coordinates?.lat || 18.85, lng: vessel.coordinates?.lng || 72.82, heading: 140, sog: 4.5 });
+
           if (!pos) return null;
 
           return (
             <Marker
               key={`pos-${vessel.id}`}
               position={[pos.lat, pos.lng]}
-              icon={createVesselIcon(vessel, isPrimary || isSelected, pos.heading)}
+              icon={createVesselIcon(vessel, isPrimary || isSelected, pos.heading, isOverview)}
               eventHandlers={{
                 click: () => setSelectedVessel(vessel)
               }}
             >
-              <Popup>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', minWidth: '220px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <strong style={{ color: vessel.color || '#ef4444', fontSize: '0.9rem' }}>
-                      {vessel.name}
-                    </strong>
-                    <span className="badge badge-sm" style={{ background: 'rgba(255, 255, 255, 0.1)', color: '#fff' }}>
-                      {vessel.correlationScore}% Score
-                    </span>
-                  </div>
-                  <div>Type: <strong>{vessel.shipType}</strong></div>
-                  <div>MMSI: {vessel.mmsi} | IMO: {vessel.imo}</div>
-                  <div>Speed: <strong>{pos.sog} knots</strong> | Heading: <strong>{pos.heading}°</strong></div>
-                  <div>Dist. from Source: <strong>{vessel.distanceFromSourceKm} km</strong></div>
-                  <div>Status: <span style={{ color: isPrimary ? '#ef4444' : '#94a3b8' }}>{vessel.candidateTag}</span></div>
-                  {vessel.behavioralAnomaly && (
-                    <div style={{ marginTop: '4px', padding: '4px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '4px', color: '#fca5a5', fontSize: '0.72rem' }}>
-                      Anomaly: {vessel.behavioralAnomaly}
+              <Popup className="operational-popup minimal-vessel-popup">
+                {isOverview ? (
+                  /* Google Maps Minimal Vessel Popup */
+                  <div className="popup-minimal-container">
+                    <div className="popup-minimal-header">
+                      <strong className="popup-vessel-name">{vessel.name}</strong>
+                      <span className="popup-vessel-sub">
+                        {isPrimary ? 'Primary Candidate' : 'Vessel of Interest'}
+                      </span>
                     </div>
-                  )}
-                  <button
-                    onClick={() => setSelectedVessel(vessel)}
-                    className="btn btn-sm btn-cyan-outline"
-                    style={{ width: '100%', marginTop: '6px' }}
-                  >
-                    Inspect Vessel Correlation
-                  </button>
-                </div>
+
+                    <div className="popup-minimal-body">
+                      <div className="popup-pos-label">Position</div>
+                      <div className="popup-pos-val font-mono">
+                        {pos.lat?.toFixed(2)}° N, {pos.lng?.toFixed(2)}° E
+                      </div>
+                      <div className="popup-vessel-telemetry font-mono">
+                        {vessel.shipType} • {pos.sog || '6.4'} kts
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => navigate('/vessels')}
+                      className="popup-action-btn"
+                    >
+                      <span>VIEW VESSEL</span>
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  /* Detailed Tactical Vessel Popup */
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', minWidth: '220px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <strong style={{ color: vessel.color || '#ef4444', fontSize: '0.9rem' }}>
+                        {vessel.name}
+                      </strong>
+                      <span className="badge badge-sm" style={{ background: 'rgba(255, 255, 255, 0.1)', color: '#fff' }}>
+                        {vessel.correlationScore}%
+                      </span>
+                    </div>
+                    <div>Type: <strong>{vessel.shipType}</strong></div>
+                    <div>MMSI: {vessel.mmsi}</div>
+                    <div>Speed: <strong>{pos.sog} kts</strong> | Heading: <strong>{pos.heading}°</strong></div>
+                    <div>Dist. Source: <strong>{vessel.distanceFromSourceKm} km</strong></div>
+                    <button
+                      onClick={() => navigate('/vessels')}
+                      className="btn btn-sm btn-cyan-outline"
+                      style={{ width: '100%', marginTop: '6px' }}
+                    >
+                      Inspect Vessel Correlation
+                    </button>
+                  </div>
+                )}
               </Popup>
             </Marker>
           );
         })}
       </MapContainer>
 
-      {/* Floating Tactical Layer Control Panel */}
-      <div style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 1000, background: 'rgba(10, 19, 36, 0.92)', backdropFilter: 'blur(10px)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.75rem', width: '220px', boxShadow: 'var(--shadow-md)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.4rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>
-          <Layers size={14} />
-          <span>MAP LAYERS</span>
-        </div>
+      {/* ── Compact Floating Map Controls (Google Maps philosophy: + / -, Layers, Recenter) ── */}
+      <div className="floating-map-controls">
+        {/* Recenter button */}
+        <button
+          onClick={() => setRecenterCounter(c => c + 1)}
+          className="map-control-pill-btn"
+          title="Recenter Map on Active Incident"
+        >
+          <Crosshair size={16} />
+        </button>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.72rem' }}>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: layers.slick ? '#00f0ff' : 'var(--text-muted)' }}>
-            <span>Detected Slick</span>
-            <input type="checkbox" checked={layers.slick} onChange={() => toggleLayer('slick')} />
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: layers.probableSource ? '#f59e0b' : 'var(--text-muted)' }}>
-            <span>Probable Source Region</span>
-            <input type="checkbox" checked={layers.probableSource} onChange={() => toggleLayer('probableSource')} />
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: layers.backwardTrajectory ? '#fbbf24' : 'var(--text-muted)' }}>
-            <span>Backward Hindcast Path</span>
-            <input type="checkbox" checked={layers.backwardTrajectory} onChange={() => toggleLayer('backwardTrajectory')} />
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: layers.vesselPositions ? '#ef4444' : 'var(--text-muted)' }}>
-            <span>Candidate Vessels</span>
-            <input type="checkbox" checked={layers.vesselPositions} onChange={() => toggleLayer('vesselPositions')} />
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: layers.vesselTracks ? '#60a5fa' : 'var(--text-muted)' }}>
-            <span>Vessel AIS Tracks</span>
-            <input type="checkbox" checked={layers.vesselTracks} onChange={() => toggleLayer('vesselTracks')} />
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: layers.forecastPath ? '#ec4899' : 'var(--text-muted)' }}>
-            <span>Forward Forecast Path</span>
-            <input type="checkbox" checked={layers.forecastPath} onChange={() => toggleLayer('forecastPath')} />
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', color: layers.uncertaintyCorridor ? '#a78bfa' : 'var(--text-muted)' }}>
-            <span>Uncertainty Corridor</span>
-            <input type="checkbox" checked={layers.uncertaintyCorridor} onChange={() => toggleLayer('uncertaintyCorridor')} />
-          </label>
+        {/* Layers toggle button */}
+        <div className="layers-control-wrapper">
+          <button
+            onClick={() => setLayersMenuOpen(!layersMenuOpen)}
+            className={`map-control-pill-btn ${layersMenuOpen ? 'active' : ''}`}
+            title="Map Layers & Basemap"
+          >
+            <Layers size={16} />
+            <span className="control-btn-label">Layers</span>
+          </button>
+
+          {/* On-demand Layers Dropdown Popover */}
+          {layersMenuOpen && (
+            <div className="compact-layers-popover">
+              {/* Basemap Selection */}
+              <div className="layers-popover-header">
+                <span>BASEMAP API</span>
+              </div>
+              <div className="basemap-selector-grid">
+                {Object.values(BASEMAPS).map((bm) => (
+                  <button
+                    key={bm.id}
+                    onClick={() => setActiveBasemap(bm.id)}
+                    className={`basemap-option-btn ${activeBasemap === bm.id ? 'active' : ''}`}
+                  >
+                    <span className="bm-dot" />
+                    <span>{bm.name}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="layers-popover-divider" />
+
+              <div className="layers-popover-header">
+                <span>OPERATIONAL OVERLAYS</span>
+              </div>
+
+              <div className="layers-popover-content">
+                {/* Core Primary Overlays */}
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.slick}
+                    onChange={() => toggleLayer('slick')}
+                  />
+                  <span className="layer-item-label">Oil Slick</span>
+                </label>
+
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.vessels}
+                    onChange={() => toggleLayer('vessels')}
+                  />
+                  <span className="layer-item-label">Relevant Vessels</span>
+                </label>
+
+                <div className="layers-popover-divider" />
+
+                {/* Analytical / Investigation Overlays */}
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.sourceRegion}
+                    onChange={() => toggleLayer('sourceRegion')}
+                  />
+                  <span className="layer-item-label">Source Region</span>
+                </label>
+
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.vesselTracks}
+                    onChange={() => toggleLayer('vesselTracks')}
+                  />
+                  <span className="layer-item-label">Vessel Tracks</span>
+                </label>
+
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.backtrack}
+                    onChange={() => toggleLayer('backtrack')}
+                  />
+                  <span className="layer-item-label">Backtrack</span>
+                </label>
+
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.forecast}
+                    onChange={() => toggleLayer('forecast')}
+                  />
+                  <span className="layer-item-label">Forecast</span>
+                </label>
+
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.wind}
+                    onChange={() => toggleLayer('wind')}
+                  />
+                  <span className="layer-item-label">Wind</span>
+                </label>
+
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.current}
+                    onChange={() => toggleLayer('current')}
+                  />
+                  <span className="layer-item-label">Current</span>
+                </label>
+
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.waves}
+                    onChange={() => toggleLayer('waves')}
+                  />
+                  <span className="layer-item-label">Waves</span>
+                </label>
+
+                <label className="layer-item-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={layers.satellite}
+                    onChange={() => toggleLayer('satellite')}
+                  />
+                  <span className="layer-item-label">Satellite</span>
+                </label>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Floating Tactical Environmental Wind & Current Vector HUD */}
-      {environmentalData && (
-        <div style={{ position: 'absolute', bottom: '12px', left: '12px', zIndex: 1000, background: 'rgba(10, 19, 36, 0.88)', backdropFilter: 'blur(8px)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '1rem', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#38bdf8' }}>
-            <Wind size={13} />
-            <span>WIND: {environmentalData.wind?.speedKmh} km/h {environmentalData.wind?.directionText} ({environmentalData.wind?.directionDeg}°)</span>
-          </div>
-          <div style={{ height: '14px', width: '1px', background: 'var(--border-subtle)' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#34d399' }}>
-            <Compass size={13} />
-            <span>CURRENT: {environmentalData.oceanCurrent?.speedMs} m/s {environmentalData.oceanCurrent?.directionText}</span>
-          </div>
-          <div style={{ height: '14px', width: '1px', background: 'var(--border-subtle)' }} />
-          <div style={{ color: '#fbbf24' }}>
-            <span>SST: {environmentalData.seaTemperatureCelsius}°C</span>
-          </div>
+      {/* Optional MetOcean HUD (Only in tactical mode or if explicitly enabled) */}
+      {!isOverview && environmentalData && (layers.wind || layers.current) && (
+        <div className="tactical-env-hud">
+          {layers.wind && (
+            <div className="hud-metric-pill" style={{ color: '#38bdf8' }}>
+              <Wind size={13} />
+              <span>WIND: {environmentalData.wind?.speedKmh} km/h {environmentalData.wind?.directionText}</span>
+            </div>
+          )}
+          {layers.current && (
+            <div className="hud-metric-pill" style={{ color: '#34d399' }}>
+              <Compass size={13} />
+              <span>CURRENT: {environmentalData.oceanCurrent?.speedMs} m/s {environmentalData.oceanCurrent?.directionText}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,41 +1,38 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { IncidentProvider } from './context/IncidentContext';
-import Sidebar from './components/Sidebar';
+import TopNavbar from './components/TopNavbar';
 import AlertBanner from './components/AlertBanner';
 import ChatbotModal from './components/ChatbotModal';
 
 // Pages
 import DashboardPage from './pages/DashboardPage';
-import IncidentDetailsPage from './pages/IncidentDetailsPage';
-import InteractiveMapPage from './pages/InteractiveMapPage';
-import VesselAnalysisPage from './pages/VesselAnalysisPage';
-import HistoricalIntelligencePage from './pages/HistoricalIntelligencePage';
-import ForecastPage from './pages/ForecastPage';
-import EvidenceReportPage from './pages/EvidenceReportPage';
+import IncidentWorkspacePage from './pages/IncidentWorkspacePage';
 
 function App() {
   return (
     <IncidentProvider>
       <Router>
-        <div className="app-container">
-          {/* Navigation Sidebar */}
-          <Sidebar />
+        <div className="app-container app-layout-topbar">
+          {/* Horizontal Clean Top Navigation Bar (Overview | Incidents | 🔔 | AI Copilot) */}
+          <TopNavbar />
 
           {/* Main Application Area */}
           <main className="main-content">
-            {/* Real-time Operational Alert Banner */}
-            <AlertBanner />
-
             {/* Application Views Routing */}
             <Routes>
+              {/* Landing Monitoring Workstation */}
               <Route path="/" element={<DashboardPage />} />
-              <Route path="/incident" element={<IncidentDetailsPage />} />
-              <Route path="/map" element={<InteractiveMapPage />} />
-              <Route path="/vessels" element={<VesselAnalysisPage />} />
-              <Route path="/history" element={<HistoricalIntelligencePage />} />
-              <Route path="/forecast" element={<ForecastPage />} />
-              <Route path="/report" element={<EvidenceReportPage />} />
+
+              {/* Dedicated Incident Workspace (Progressive Disclosure) */}
+              <Route path="/incident" element={<IncidentWorkspacePage />} />
+
+              {/* Seamless redirection for legacy links into Incident Workspace tabs */}
+              <Route path="/map" element={<Navigate to="/incident?tab=map" replace />} />
+              <Route path="/vessels" element={<Navigate to="/incident?tab=vessels" replace />} />
+              <Route path="/history" element={<Navigate to="/incident?tab=history" replace />} />
+              <Route path="/forecast" element={<Navigate to="/incident?tab=forecast" replace />} />
+              <Route path="/report" element={<Navigate to="/incident?tab=report" replace />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
